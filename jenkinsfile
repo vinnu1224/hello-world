@@ -1,0 +1,83 @@
+pipeline {
+    agent any
+    
+    environment {
+        TOMCAT_URL = 'http://10.0.8.241:8080'
+        TOMCAT_USER = 'admin'
+        TOMCAT_PASS = 'admin123'
+        GIT_REPO = 'https://github.com/vinnu1224/hello-world.git'
+        APP_NAME = 'myapp'
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                git branch: 'main', url: "${GIT_REPO}"
+            }
+        }
+        
+        stage('Build Application') {
+            steps {
+                script {
+                    // Build with Maven or Gradle
+                    sh 'mvn clean package'
+                }
+            }
+        }
+        
+        stage('Test Application') {
+            steps {
+                script {
+                    // Run tests
+                    sh 'mvn test'
+                }
+            }
+        }
+        
+        stage('Deploy with Ansible') {
+            steps {
+                script {
+                    // Run Ansible playbook
+                    sh '''
+                        ansible-playbook -i ~/ansible/inventory/hosts \
+                        ~/ansible/playbooks/deploy-tomcat.yml \
+                        -e "war_file_path=${WORKSPACE}/target/${APP_NAME}.war" \
+                        -e "app_name=${APP_NAME}"
+                    '''
+                }
+            }
+        }
+        
+        stage('Verify Deployment') {
+            steps {
+                script {
+                    // Wait for application to be ready
+                    sh '''
+                        for i in {1..30}; do
+                            if curl -s -u ${TOMCAT_USER}:${TOMCAT_PASS} \
+                               ${TOMCAT_URL}/${APP_NAME} | grep -q "Welcome"; then
+                                echo "Application deployed successfully!"
+                                exit 0
+                            fi
+                            sleep 2
+                        done
+                        echo "Application deployment verification failed"
+                        exit 1
+                    '''
+                }
+            }
+        }
+    }
+    
+    post {
+        success {
+            echo 'Deployment successful!'
+            // Send notification (email, Slack, etc.)
+        }
+        failure {
+            echo 'Deployment failed!'
+            // Send failure notification
+        }
+    }
+}
+
